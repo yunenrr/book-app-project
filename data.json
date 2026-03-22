@@ -3,7 +3,7 @@
     "title": "The Hobbit",
     "author": "J.R.R. Tolkien",
     "year": 1937,
-    "read": false
+    "read": true
   },
   {
     "title": "1984",
@@ -15,7 +15,7 @@
     "title": "Dune",
     "author": "Frank Herbert",
     "year": 1965,
-    "read": false
+    "read": true
   },
   {
     "title": "To Kill a Mockingbird",
