@@ -77,8 +77,8 @@ def get_book_details() -> Tuple[str, str, int]:
     """
     title: str = _get_validated_input(
         "Enter book title: ",
-        lambda x: 0 < len(x) <= MAX_TEXT_LENGTH,
-        f"Title must be between 1 and {MAX_TEXT_LENGTH} characters."
+        lambda x: isinstance(x, str) and 0 < len(x.strip()) <= MAX_TEXT_LENGTH,
+        f"Title must be a non-empty string between 1 and {MAX_TEXT_LENGTH} characters."
     )
     
     author: str = _get_validated_input(
