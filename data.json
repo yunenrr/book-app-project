@@ -1,32 +1,22 @@
 [
   {
-    "title": "The Hobbit",
-    "author": "J.R.R. Tolkien",
-    "year": 1937,
-    "read": true
-  },
-  {
-    "title": "1984",
-    "author": "George Orwell",
-    "year": 1949,
-    "read": true
-  },
-  {
-    "title": "Dune",
-    "author": "Frank Herbert",
-    "year": 1965,
-    "read": true
-  },
-  {
-    "title": "To Kill a Mockingbird",
-    "author": "Harper Lee",
-    "year": 1960,
-    "read": false
-  },
-  {
-    "title": "Mysterious Book",
-    "author": "",
-    "year": 0,
-    "read": false
+    "title": "El Quijote",
+    "author": "Cervantes",
+    "year": 1605,
+    "read": false,
+    "reviews": [
+      {
+        "user": "Ana",
+        "comment": "Excelente libro",
+        "rating": 5,
+        "date": "2026-03-24T18:37:28.342940"
+      },
+      {
+        "user": "Maria",
+        "comment": "No me gustó tanto",
+        "rating": 2,
+        "date": "2026-03-24T18:37:28.347250"
+      }
+    ]
   }
 ]

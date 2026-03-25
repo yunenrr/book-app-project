@@ -1,11 +1,29 @@
 import json
 import os
 import tempfile
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Optional, Dict
+from datetime import datetime
 
 DATA_FILE = "data.json"
 
+
+@dataclass
+class Review:
+    user: str
+    comment: str
+    rating: int
+    date: Optional[str] = None  # ISO format
+
+    def __post_init__(self):
+        if not self.user or not self.user.strip():
+            raise ValueError("User cannot be empty")
+        if not self.comment or not self.comment.strip():
+            raise ValueError("Comment cannot be empty")
+        if not (1 <= self.rating <= 5):
+            raise ValueError("Rating must be between 1 and 5")
+        if self.date is None:
+            self.date = datetime.now().isoformat()
 
 @dataclass
 class Book:
@@ -13,6 +31,7 @@ class Book:
     author: str
     year: int
     read: bool = False
+    reviews: List[Review] = field(default_factory=list)
     
     def __post_init__(self):
         """Validate book data after initialization."""
@@ -24,6 +43,9 @@ class Book:
             raise ValueError("Year must be an integer")
         if self.year < 1000 or self.year > 2100:
             raise ValueError("Year must be between 1000 and 2100")
+        # Convert reviews from dicts if loaded from JSON
+        if self.reviews and isinstance(self.reviews[0], dict):
+            self.reviews = [Review(**r) for r in self.reviews]
 
 
 class BookCollection:
@@ -95,7 +117,12 @@ class BookCollection:
             
             try:
                 with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                    json.dump([asdict(b) for b in self.books], f, indent=2, ensure_ascii=False)
+                    # Custom serialization for reviews
+                    def book_to_dict(b):
+                        d = asdict(b)
+                        d['reviews'] = [asdict(r) for r in b.reviews]
+                        return d
+                    json.dump([book_to_dict(b) for b in self.books], f, indent=2, ensure_ascii=False)
                 
                 # Atomic rename (on Windows, need to remove target first)
                 if os.path.exists(DATA_FILE):
@@ -133,6 +160,54 @@ class BookCollection:
 
     def list_books(self) -> List[Book]:
         return self.books
+
+    def add_review(self, title: str, user: str, comment: str, rating: int) -> Review:
+        """
+        Add a review to a book by title.
+        Raises ValueError if book not found or review invalid.
+        """
+        book = self.find_book_by_title(title)
+        if not book:
+            raise ValueError(f"Book '{title}' not found")
+        review = Review(user=user, comment=comment, rating=rating)
+        book.reviews.append(review)
+        self.save_books()
+        return review
+
+    def list_reviews(self, title: str) -> List[Review]:
+        """
+        List all reviews for a book by title.
+        Returns empty list if no reviews or book not found.
+        """
+        book = self.find_book_by_title(title)
+        if not book:
+            return []
+        return book.reviews.copy()
+
+    def remove_review(self, title: str, user: str, comment: str) -> bool:
+        """
+        Remove a review by user and comment for a book.
+        Returns True if removed, False if not found.
+        """
+        book = self.find_book_by_title(title)
+        if not book:
+            return False
+        for r in book.reviews:
+            if r.user == user and r.comment == comment:
+                book.reviews.remove(r)
+                self.save_books()
+                return True
+        return False
+
+    def average_rating(self, title: str) -> Optional[float]:
+        """
+        Get the average rating for a book by title.
+        Returns None if no reviews or book not found.
+        """
+        book = self.find_book_by_title(title)
+        if not book or not book.reviews:
+            return None
+        return round(sum(r.rating for r in book.reviews) / len(book.reviews), 2)
 
     def find_book_by_title(self, title: str) -> Optional[Book]:
         """Find a book by title (case-insensitive). O(1) lookup using index."""
