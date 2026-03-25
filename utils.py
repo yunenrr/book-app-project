@@ -64,7 +64,7 @@ def get_user_choice() -> str:
     """
     return _get_validated_input(
         "Choose an option (1-5): ",
-        lambda x: x in VALID_CHOICES,
+        lambda x: x.isdigit() and x in VALID_CHOICES,
         "Invalid choice. Please enter a number between 1 and 5."
     )
 
