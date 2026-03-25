@@ -70,10 +70,16 @@ def get_user_choice() -> str:
 
 
 def get_book_details() -> Tuple[str, str, int]:
-    """Collect and validate book information from user input.
-    
+    """
+    Solicita y valida la información de un libro desde la entrada del usuario.
+
+    No recibe parámetros.
+
     Returns:
-        Tuple[str, str, int]: A tuple containing (title, author, year).
+        tuple: Una tupla (title, author, year) donde:
+            title (str): Título del libro, cadena no vacía y longitud máxima permitida.
+            author (str): Autor del libro, cadena no vacía y longitud máxima permitida.
+            year (int): Año de publicación, valor numérico entre MIN_YEAR y CURRENT_YEAR.
     """
     title: str = _get_validated_input(
         "Enter book title: ",
