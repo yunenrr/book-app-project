@@ -1,9 +1,7 @@
-import json
-import os
-import tempfile
 from dataclasses import dataclass, asdict, field
 from typing import List, Optional, Dict
 from datetime import datetime
+from storage import BookStorage
 
 DATA_FILE = "data.json"
 
@@ -49,34 +47,17 @@ class Book:
 
 
 class BookCollection:
-    def __init__(self):
+    def __init__(self, storage: BookStorage = None):
+        self.storage = storage or BookStorage(DATA_FILE)
         self.books: List[Book] = []
         self._title_index: Dict[str, Book] = {}
         self._author_index: Dict[str, List[Book]] = {}
-        self.load_books()
+        self._load_books()
 
-    def load_books(self):
-        """Load books from the JSON file if it exists."""
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.books = [Book(**b) for b in data]
-                self._rebuild_indexes()
-        except FileNotFoundError:
-            self.books = []
-            self._title_index = {}
-            self._author_index = {}
-        except json.JSONDecodeError:
-            print("Warning: data.json is corrupted. Starting with empty collection.")
-            self.books = []
-            self._title_index = {}
-            self._author_index = {}
-        except ValueError as e:
-            print(f"Warning: Invalid book data in file: {e}. Starting with empty collection.")
-            self.books = []
-            self._title_index = {}
-            self._author_index = {}
-    
+    def _load_books(self):
+        self.books = self.storage.load_books()
+        self._rebuild_indexes()
+
     def _rebuild_indexes(self):
         """Rebuild title and author indexes from the current book list."""
         self._title_index = {}
@@ -109,33 +90,8 @@ class BookCollection:
                 del self._author_index[author_key]
 
     def save_books(self):
-        """Save the current book collection to JSON using atomic write."""
-        try:
-            # Create temporary file in the same directory as the target file
-            dir_name = os.path.dirname(os.path.abspath(DATA_FILE))
-            fd, temp_path = tempfile.mkstemp(dir=dir_name, suffix='.json', text=True)
-            
-            try:
-                with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                    # Custom serialization for reviews
-                    def book_to_dict(b):
-                        d = asdict(b)
-                        d['reviews'] = [asdict(r) for r in b.reviews]
-                        return d
-                    json.dump([book_to_dict(b) for b in self.books], f, indent=2, ensure_ascii=False)
-                
-                # Atomic rename (on Windows, need to remove target first)
-                if os.path.exists(DATA_FILE):
-                    os.replace(temp_path, DATA_FILE)
-                else:
-                    os.rename(temp_path, DATA_FILE)
-            except:
-                # Clean up temp file if something went wrong
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-                raise
-        except (IOError, OSError) as e:
-            raise IOError(f"Failed to save books to {DATA_FILE}: {e}")
+        """Save the current book collection using the storage class."""
+        self.storage.save_books(self.books)
 
     def add_book(self, title: str, author: str, year: int) -> Book:
         """
