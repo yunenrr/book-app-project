@@ -1,8 +1,11 @@
 import json
 import os
 import tempfile
+import logging
 from typing import List, Type
 from books import Book, Review
+
+logger = logging.getLogger(__name__)
 
 class BookStorage:
     def __init__(self, data_file: str = "data.json"):
@@ -16,10 +19,10 @@ class BookStorage:
         except FileNotFoundError:
             return []
         except json.JSONDecodeError:
-            print(f"Warning: {self.data_file} is corrupted. Starting with empty collection.")
+            logger.warning(f"{self.data_file} is corrupted. Starting with empty collection.")
             return []
         except ValueError as e:
-            print(f"Warning: Invalid book data in file: {e}. Starting with empty collection.")
+            logger.warning(f"Invalid book data in file: {e}. Starting with empty collection.")
             return []
 
     def save_books(self, books: List[Book]):

@@ -2,8 +2,11 @@ from dataclasses import dataclass, asdict, field
 from typing import List, Optional, Dict
 from datetime import datetime
 from storage import BookStorage
+import logging
 
 DATA_FILE = "data.json"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
