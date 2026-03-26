@@ -115,6 +115,10 @@ class BookCollection:
             ValueError: If book data is invalid or book already exists.
             IOError: If saving to file fails.
         """
+        # Validate title
+        if not title or not title.strip():
+            logger.warning("Book title cannot be empty.")
+            return "Book title cannot be empty."
         # Check for duplicates
         title_key = title.lower()
         if title_key in self._title_index:

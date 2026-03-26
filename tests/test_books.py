@@ -27,6 +27,15 @@ def test_add_book():
     assert book.year == 1949
     assert book.read is False
 
+def test_add_book_empty_title():
+    collection = BookCollection()
+    result = collection.add_book("", "Author", 2020)
+    assert isinstance(result, str)
+    assert "title cannot be empty" in result.lower()
+    result = collection.add_book("   ", "Author", 2020)
+    assert isinstance(result, str)
+    assert "title cannot be empty" in result.lower()
+
 def test_add_duplicate_book():
     collection = BookCollection()
     collection.add_book("1984", "George Orwell", 1949)
