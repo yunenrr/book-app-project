@@ -1,6 +1,15 @@
 import sys
 from typing import Dict, List, Any
 from books import BookCollection, Book
+from utils import show_books
+from exceptions import (
+    BookAppException,
+    BookNotFoundError,
+    DuplicateBookError,
+    EmptyFieldError,
+    InvalidYearError,
+    SaveError
+)
 
 
 class UI:
@@ -21,20 +30,7 @@ class UI:
         """Print an error message."""
         print(f"\n✗ Error: {message}\n")
 
-    @staticmethod
-    def show_books(books: List[Book]) -> None:
-        """Display books in a user-friendly format."""
-        if not books:
-            print("No books found.")
-            return
 
-        print("\nYour Book Collection:\n")
-
-        for index, book in enumerate(books, start=1):
-            status = "✓" if book.read else " "
-            print(f"{index}. [{status}] {book.title} by {book.author} ({book.year})")
-
-        print()
 
     @staticmethod
     def show_help(commands_info: Dict[str, Dict[str, str]]) -> None:
@@ -68,7 +64,7 @@ class ListCommand(Command):
 
     def execute(self) -> None:
         books = self.collection.list_books()
-        self.ui.show_books(books)
+        show_books(books)
 
     @property
     def description(self) -> str:
@@ -102,6 +98,12 @@ class AddCommand(Command):
             self.ui.print_success(f'"{title}" by {author} added to your collection.')
         except ValueError:
             self.ui.print_error("Year must be a valid number.")
+        except DuplicateBookError as e:
+            self.ui.print_error(str(e))
+        except (EmptyFieldError, InvalidYearError, SaveError) as e:
+            self.ui.print_error(str(e))
+        except BookAppException as e:
+            self.ui.print_error(f"Failed to add book: {e}")
 
     @property
     def description(self) -> str:
@@ -120,10 +122,13 @@ class RemoveCommand(Command):
             self.ui.print_error("Title cannot be empty.")
             return
 
-        if self.collection.remove_book(title):
+        try:
+            self.collection.remove_book(title)
             self.ui.print_success(f'"{title}" has been removed from your collection.')
-        else:
-            self.ui.print_error(f'Book titled "{title}" not found.')
+        except BookNotFoundError as e:
+            self.ui.print_error(str(e))
+        except BookAppException as e:
+            self.ui.print_error(f"Failed to remove book: {e}")
 
     @property
     def description(self) -> str:
@@ -148,8 +153,7 @@ class FindCommand(Command):
             print(f"No books found by {author}.")
             return
 
-        print(f"Books by {author}:\n")
-        self.ui.show_books(books)
+        show_books(books, header=f"Books by {author}")
 
     @property
     def description(self) -> str:
@@ -168,10 +172,13 @@ class MarkReadCommand(Command):
             self.ui.print_error("Title cannot be empty.")
             return
 
-        if self.collection.mark_as_read(title):
+        try:
+            self.collection.mark_as_read(title)
             self.ui.print_success(f'"{title}" has been marked as read.')
-        else:
-            self.ui.print_error(f'Book titled "{title}" not found.')
+        except BookNotFoundError as e:
+            self.ui.print_error(str(e))
+        except BookAppException as e:
+            self.ui.print_error(f"Failed to mark book as read: {e}")
 
     @property
     def description(self) -> str:
