@@ -268,12 +268,6 @@ class BookCollection:
         year_max: Optional[int] = None,
         read: Optional[bool] = None
     ) -> List[Book]:
-        self,
-        author: Optional[str] = None,
-        year_min: Optional[int] = None,
-        year_max: Optional[int] = None,
-        read: Optional[bool] = None
-    ) -> List[Book]:
         """
         Search books by multiple criteria.
         
