@@ -175,8 +175,21 @@ class BookStorage:
             
             try:
                 data = json.load(f)
-                books = [Book(**b) for b in data]
-                logger.debug(f"Successfully loaded {len(books)} books")
+                books = []
+                skipped = 0
+                for idx, b in enumerate(data, start=1):
+                    try:
+                        books.append(Book(**b))
+                    except Exception as entry_err:
+                        # Don't let a single bad entry prevent loading the rest
+                        skipped += 1
+                        logger.warning(f"Skipping invalid book entry #{idx} in {self.data_file}: {entry_err}")
+
+                if skipped:
+                    logger.info(f"Loaded {len(books)} books; skipped {skipped} invalid entries")
+                else:
+                    logger.debug(f"Successfully loaded {len(books)} books")
+
                 return books
             except json.JSONDecodeError as e:
                 logger.error(f"{self.data_file} is corrupted: {e}")
