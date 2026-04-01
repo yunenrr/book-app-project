@@ -109,7 +109,11 @@ class Book:
             raise EmptyFieldError("Author")
         if not isinstance(self.year, int):
             raise InvalidYearError(self.year, 1000, 2100)
-        if self.year < 1000 or self.year > 2100:
+        # Allow legacy/unknown year sentinel 0 to preserve backward compatibility
+        if self.year == 0:
+            # Treat as unknown year; do not raise an exception
+            pass
+        elif self.year < 1000 or self.year > 2100:
             raise InvalidYearError(self.year, 1000, 2100)
         # Convert reviews from dicts if loaded from JSON
         if self.reviews and isinstance(self.reviews[0], dict):
