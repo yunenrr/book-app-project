@@ -563,30 +563,24 @@ class BookCollection:
         self.save_books()
 
     def find_by_author(self, author: str) -> List[Book]:
-        """Find all books by a given author using O(1) index lookup.
+        """Find all books by a given author.
         
-        Search is case-insensitive. Returns a copy of the list to prevent
-        external modifications to the index.
-        
-        Args:
-            author (str): Author name to search for (case-insensitive).
-        
-        Returns:
-            List[Book]: List of books by the author. Returns empty list
-                if no books found.
-        
-        Examples:
-            >>> collection = BookCollection()
-            >>> collection.add_book("Book 1", "John Doe", 2020)
-            >>> collection.add_book("Book 2", "John Doe", 2021)
-            >>> collection.add_book("Book 3", "Jane Smith", 2022)
-            >>> books = collection.find_by_author("john doe")  # Case-insensitive
-            >>> len(books)
-            2
-            >>> collection.find_by_author("Unknown Author")
-            []
+        Supports case-insensitive partial (substring) matches. If the provided
+        author matches an exact author in the author index, that list is
+        returned (fast path). Otherwise performs a case-insensitive substring
+        search over all book authors.
+        Returns a copy of the list to prevent external modifications.
         """
-        return self._author_index.get(author.lower(), []).copy()
+        if author is None:
+            return []
+        key = author.lower().strip()
+        if not key:
+            return []
+        # Fast exact match using index
+        if key in self._author_index:
+            return self._author_index[key].copy()
+        # Fallback to substring search across all books' authors
+        return [b for b in self.books if key in b.author.lower()]
     
     def search(
         self,
@@ -642,7 +636,11 @@ class BookCollection:
         results = self.books
         
         if author is not None:
-            results = [b for b in results if b.author.lower() == author.lower()]
+            key = author.lower().strip()
+            if not key:
+                results = []
+            else:
+                results = [b for b in results if key in b.author.lower()]
         
         if year_min is not None:
             results = [b for b in results if b.year >= year_min]
