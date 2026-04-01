@@ -1,7 +1,7 @@
 ---
 name: ayudante-pytest
 description: Especialista en pruebas para proyectos de Python usando pytest
-model: GPT-5.3-Codex
+model: claude-sonnet-4.5
 tools: ["read", "edit", "search", "execute"]
 ---
 

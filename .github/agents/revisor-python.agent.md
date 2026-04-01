@@ -1,7 +1,7 @@
 ---
 name: revisor-python
 description: Especialista en calidad de código Python para revisar proyectos de Python
-model: GPT-5.3-Codex
+model: claude-sonnet-4.5
 tools: ["read", "edit", "search"]
 ---
 
