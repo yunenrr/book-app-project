@@ -101,6 +101,8 @@ Enter author: Robert Martin
 Enter publication year: 2008
 ✅ Book added: Clean Code by Robert Martin (2008)
 
+Note: When adding books interactively, the publication year is required and must be between MIN_YEAR and the current year. The CLI validates input and will retry up to 3 times before cancelling the operation.
+
 # Mark it as read
 $ python book_app.py read
 Enter book title: Clean Code

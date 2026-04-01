@@ -1,14 +1,17 @@
 import sys
 from typing import Dict, List, Any
 from books import BookCollection, Book
-from utils import show_books
+from utils import show_books, get_book_details
 from exceptions import (
     BookAppException,
     BookNotFoundError,
     DuplicateBookError,
     EmptyFieldError,
     InvalidYearError,
-    SaveError
+    SaveError,
+    InputTooLongError,
+    MaxRetriesExceededError,
+    UserCancelledError
 )
 
 
@@ -77,27 +80,15 @@ class AddCommand(Command):
     def execute(self) -> None:
         self.ui.print_section("Add a New Book")
 
-        title = input("Title: ").strip()
-        author = input("Author: ").strip()
-        year_str = input("Year (optional): ").strip()
-
-        if not title:
-            self.ui.print_error("Title cannot be empty.")
-            return
-
-        if not author:
-            self.ui.print_error("Author cannot be empty.")
-            return
-
         try:
-            year = int(year_str) if year_str else 0
-            if year < 0:
-                self.ui.print_error("Year must be a positive number.")
-                return
+            title, author, year = get_book_details()
+            # get_book_details validates title, author length and year range
             self.collection.add_book(title, author, year)
             self.ui.print_success(f'"{title}" by {author} added to your collection.')
-        except ValueError:
-            self.ui.print_error("Year must be a valid number.")
+        except (InputTooLongError, MaxRetriesExceededError, UserCancelledError) as e:
+            # Input-related errors: show message and abort
+            self.ui.print_error(str(e))
+            return
         except DuplicateBookError as e:
             self.ui.print_error(str(e))
         except (EmptyFieldError, InvalidYearError, SaveError) as e:
