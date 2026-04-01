@@ -2,11 +2,15 @@ import json
 import os
 import tempfile
 import logging
+import shutil
 from typing import List, Type, TYPE_CHECKING, Optional
 from contextlib import contextmanager
+from datetime import datetime
 
 if TYPE_CHECKING:
     from books import Book, Review
+
+from exceptions import CorruptedDataError, LoadError, SaveError
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +85,11 @@ class BookStorage:
     """Handles persistent storage of book collections.
     
     Uses context managers for safe file operations with atomic writes.
+    Provides automatic backup and recovery from corrupted files.
     
     Attributes:
         data_file (str): Path to the JSON data file.
+        backup_file (str): Path to the backup file.
         
     Examples:
         >>> storage = BookStorage("my_books.json")
@@ -99,18 +105,60 @@ class BookStorage:
                 Defaults to "data.json".
         """
         self.data_file = data_file
+        self.backup_file = f"{data_file}.backup"
 
-    def load_books(self) -> List["Book"]:
-        """Load books from the data file using safe context manager.
+    def _create_backup(self) -> None:
+        """Create a backup of the current data file if it exists.
+        
+        The backup file has a .backup extension and is overwritten each time.
+        """
+        if os.path.exists(self.data_file):
+            try:
+                shutil.copy2(self.data_file, self.backup_file)
+                logger.debug(f"Backup created: {self.backup_file}")
+            except (IOError, OSError) as e:
+                logger.warning(f"Failed to create backup: {e}")
+    
+    def _restore_from_backup(self) -> bool:
+        """Attempt to restore data from backup file.
         
         Returns:
-            List[Book]: List of loaded books, or empty list if file doesn't exist
-                or is corrupted.
+            bool: True if backup was successfully restored, False otherwise.
+        """
+        if not os.path.exists(self.backup_file):
+            logger.warning("No backup file available for recovery")
+            return False
+        
+        try:
+            # Verify backup is valid JSON before restoring
+            with open(self.backup_file, 'r', encoding='utf-8') as f:
+                json.load(f)
+            
+            # Backup is valid, restore it
+            shutil.copy2(self.backup_file, self.data_file)
+            logger.info(f"Successfully restored data from backup")
+            return True
+        except json.JSONDecodeError:
+            logger.error("Backup file is also corrupted")
+            return False
+        except (IOError, OSError) as e:
+            logger.error(f"Failed to restore from backup: {e}")
+            return False
+    
+    def load_books(self) -> List["Book"]:
+        """Load books from the data file with automatic recovery from backup.
+        
+        Returns:
+            List[Book]: List of loaded books, or empty list if file doesn't exist.
+        
+        Raises:
+            CorruptedDataError: If the file is corrupted and backup recovery fails.
+            LoadError: If there's an unrecoverable error loading the data.
                 
         Note:
             - Returns empty list if file not found (normal first run)
-            - Logs warning and returns empty list if file is corrupted
-            - Logs warning and returns empty list if book data is invalid
+            - Attempts to restore from backup if main file is corrupted
+            - Raises CorruptedDataError if both main and backup are corrupted
             
         Examples:
             >>> storage = BookStorage("books.json")
@@ -127,25 +175,56 @@ class BookStorage:
             
             try:
                 data = json.load(f)
-                return [Book(**b) for b in data]
-            except json.JSONDecodeError:
-                logger.warning(f"{self.data_file} is corrupted. Starting with empty collection.")
-                return []
-            except ValueError as e:
-                logger.warning(f"Invalid book data in file: {e}. Starting with empty collection.")
-                return []
+                books = [Book(**b) for b in data]
+                logger.debug(f"Successfully loaded {len(books)} books")
+                return books
+            except json.JSONDecodeError as e:
+                logger.error(f"{self.data_file} is corrupted: {e}")
+                
+                # Attempt to restore from backup
+                if self._restore_from_backup():
+                    logger.info("Retrying load after backup restoration")
+                    # Recursive call after restoration (only one level deep)
+                    with safe_file_read(self.data_file) as f_retry:
+                        if f_retry:
+                            try:
+                                data = json.load(f_retry)
+                                books = [Book(**b) for b in data]
+                                logger.info(f"Successfully loaded {len(books)} books from restored backup")
+                                return books
+                            except (json.JSONDecodeError, ValueError) as retry_error:
+                                raise CorruptedDataError(self.data_file) from retry_error
+                
+                # No backup or backup failed
+                raise CorruptedDataError(self.data_file) from e
+            except (ValueError, TypeError, KeyError) as e:
+                logger.error(f"Invalid book data in file: {e}")
+                raise LoadError(self.data_file, str(e)) from e
 
-    def save_books(self, books: List["Book"]) -> None:
-        """Save books to the data file using atomic write context manager.
+    def _verify_saved_data(self) -> bool:
+        """Verify that the saved data file is valid JSON.
         
-        Uses a temporary file and atomic replacement to ensure data integrity.
-        If the write fails, the original file remains unchanged.
+        Returns:
+            bool: True if file is valid, False otherwise.
+        """
+        try:
+            with open(self.data_file, 'r', encoding='utf-8') as f:
+                json.load(f)
+            return True
+        except (json.JSONDecodeError, IOError, OSError):
+            return False
+    
+    def save_books(self, books: List["Book"]) -> None:
+        """Save books to the data file with backup and verification.
+        
+        Creates a backup before saving, uses atomic write for safety,
+        and verifies the saved data is valid JSON.
         
         Args:
             books (List[Book]): List of books to save.
             
         Raises:
-            IOError: If the write operation fails.
+            SaveError: If the write operation fails or verification fails.
             
         Examples:
             >>> from books import Book
@@ -153,6 +232,9 @@ class BookStorage:
             >>> books = [Book("Title", "Author", 2020)]
             >>> storage.save_books(books)  # doctest: +SKIP
         """
+        # Create backup before saving
+        self._create_backup()
+        
         try:
             with safe_file_write(self.data_file) as f:
                 def book_to_dict(b):
@@ -167,5 +249,25 @@ class BookStorage:
                     indent=2, 
                     ensure_ascii=False
                 )
+            
+            # Verify the saved data is valid
+            if not self._verify_saved_data():
+                logger.error("Saved data verification failed")
+                # Restore from backup
+                if self._restore_from_backup():
+                    raise SaveError(self.data_file, "Data verification failed, restored from backup")
+                else:
+                    raise SaveError(self.data_file, "Data verification failed, backup restoration also failed")
+            
+            logger.debug(f"Successfully saved {len(books)} books")
+            
         except (IOError, OSError) as e:
-            raise IOError(f"Failed to save books to {self.data_file}: {e}")
+            logger.error(f"Failed to save books: {e}")
+            # Attempt to restore backup if save failed
+            self._restore_from_backup()
+            raise SaveError(self.data_file, str(e)) from e
+        except Exception as e:
+            logger.error(f"Unexpected error while saving: {e}")
+            # Attempt to restore backup for any other errors
+            self._restore_from_backup()
+            raise SaveError(self.data_file, f"Unexpected error: {e}") from e
