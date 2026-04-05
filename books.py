@@ -1,3 +1,29 @@
+"""
+books.py — Book collection domain models and collection manager.
+
+This module defines the core domain types used by the application (Review,
+Book, BookCollection) and provides a BookCollection manager responsible for
+in-memory operations and persistence via a storage backend.
+
+Design notes:
+- Business logic lives in BookCollection and data classes; CLI helpers are
+  implemented separately elsewhere to keep responsibilities clear.
+- Specific custom exceptions from exceptions.py are raised for validation and
+  storage errors; callers (e.g., CLI) should catch and present friendly
+  messages to users.
+
+Public classes and functions:
+- Review: dataclass representing a review.
+- Book: dataclass representing a book record.
+- BookCollection: manages books, reviews, search, and persistence.
+
+Example:
+    >>> from books import BookCollection
+    >>> c = BookCollection()
+    >>> c.add_book("1984", "George Orwell", 1949)
+
+"""
+
 from dataclasses import dataclass, asdict, field
 from typing import List, Optional, Dict
 from datetime import datetime

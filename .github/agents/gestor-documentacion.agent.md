@@ -1,8 +1,8 @@
 ---
 description: Genera o actualiza docstrings y contenido de README
-name: gestor-readme
+name: gestor-documentacion
 ---
 
-# gestor-readme instructions
+# gestor-documentacion instructions
 
 Genera o actualiza docstrings y contenido de README
