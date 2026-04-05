@@ -132,3 +132,80 @@ def test_mark_as_unread_invalid():
     with pytest.raises(BookNotFoundError) as exc_info:
         collection.mark_as_unread("NoBook")
     assert "not found" in str(exc_info.value)
+
+# ----------------------
+# Tests for find_by_year_range
+# ----------------------
+
+def test_find_by_year_range_exact_bounds_returns_books():
+    collection = BookCollection()
+    collection.add_book("Old", "AuthorA", 1999)
+    collection.add_book("Mid", "AuthorB", 2005)
+    collection.add_book("New", "AuthorC", 2012)
+    results = collection.find_by_year_range(1999, 2012)
+    assert len(results) == 3
+
+
+def test_find_by_year_range_min_only_returns_from_min_onwards():
+    collection = BookCollection()
+    collection.add_book("A", "X", 2008)
+    collection.add_book("B", "Y", 2015)
+    results = collection.find_by_year_range(2010, None)
+    assert all(b.year >= 2010 for b in results) and len(results) == 1
+
+
+def test_find_by_year_range_max_only_returns_up_to_max():
+    collection = BookCollection()
+    collection.add_book("A", "X", 1995)
+    collection.add_book("B", "Y", 2005)
+    results = collection.find_by_year_range(None, 2000)
+    assert all(b.year <= 2000 for b in results) and len(results) == 1
+
+
+def test_find_by_year_range_no_bounds_returns_all():
+    collection = BookCollection()
+    collection.add_book("One", "A", 2000)
+    collection.add_book("Two", "B", 2010)
+    results = collection.find_by_year_range(None, None)
+    assert len(results) == 2
+
+
+def test_find_by_year_range_min_greater_than_max_returns_empty():
+    collection = BookCollection()
+    collection.add_book("A", "X", 2000)
+    results = collection.find_by_year_range(2010, 2000)
+    assert results == []
+
+
+def test_find_by_year_range_inclusive_bounds():
+    collection = BookCollection()
+    collection.add_book("EdgeLow", "E", 2000)
+    collection.add_book("EdgeHigh", "E", 2010)
+    results = collection.find_by_year_range(2000, 2010)
+    years = {b.year for b in results}
+    assert 2000 in years and 2010 in years
+
+
+def test_find_by_year_range_multiple_books_same_year():
+    collection = BookCollection()
+    collection.add_book("Book1", "A", 2001)
+    collection.add_book("Book2", "B", 2001)
+    results = collection.find_by_year_range(2001, 2001)
+    assert len(results) == 2
+
+
+def test_find_by_year_range_invalid_type_raises_InvalidYearError():
+    collection = BookCollection()
+    collection.add_book("A", "X", 2000)
+    with pytest.raises(InvalidYearError):
+        collection.find_by_year_range("2000", "2010")
+    with pytest.raises(InvalidYearError):
+        collection.find_by_year_range(2000.5, 2010)
+
+
+def test_find_by_year_range_index_updates_on_add_remove():
+    collection = BookCollection()
+    collection.add_book("Transient", "T", 2020)
+    assert any(b.title == "Transient" for b in collection.find_by_year_range(2020, 2020))
+    collection.remove_book("Transient")
+    assert all(b.title != "Transient" for b in collection.find_by_year_range(2020, 2020))

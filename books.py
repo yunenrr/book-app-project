@@ -159,6 +159,7 @@ class BookCollection:
         self.books: List[Book] = []
         self._title_index: Dict[str, Book] = {}
         self._author_index: Dict[str, List[Book]] = {}
+        self._year_index: Dict[int, List[Book]] = {}
         self._load_books()
 
     def _load_books(self) -> None:
@@ -184,6 +185,7 @@ class BookCollection:
         """
         self._title_index = {}
         self._author_index = {}
+        self._year_index = {}
         for book in self.books:
             self._add_to_indexes(book)
     
@@ -196,15 +198,24 @@ class BookCollection:
         Note:
             - Title index maps lowercase title to book (one-to-one).
             - Author index maps lowercase author to list of books (one-to-many).
+            - Year index maps integer year to list of books (one-to-many) for fast range queries.
         """
         title_key = book.title.lower()
         author_key = book.author.lower()
+        year_key = book.year
         
+        # Title index (one-to-one)
         self._title_index[title_key] = book
         
+        # Author index (one-to-many)
         if author_key not in self._author_index:
             self._author_index[author_key] = []
         self._author_index[author_key].append(book)
+        
+        # Year index (one-to-many). Use integer year as key; include sentinel years (e.g., 0)
+        if year_key not in self._year_index:
+            self._year_index[year_key] = []
+        self._year_index[year_key].append(book)
     
     def _remove_from_indexes(self, book: Book) -> None:
         """Remove a book from the search indexes.
@@ -213,11 +224,12 @@ class BookCollection:
             book (Book): Book to remove from indexes.
         
         Note:
-            If the author has no more books after removal, the author key
-            is deleted from the author index.
+            If the author or year has no more books after removal, the key
+            is deleted from the respective index.
         """
         title_key = book.title.lower()
         author_key = book.author.lower()
+        year_key = book.year
         
         if title_key in self._title_index:
             del self._title_index[title_key]
@@ -226,6 +238,15 @@ class BookCollection:
             self._author_index[author_key].remove(book)
             if not self._author_index[author_key]:
                 del self._author_index[author_key]
+        
+        if year_key in self._year_index:
+            try:
+                self._year_index[year_key].remove(book)
+            except ValueError:
+                # Book not present in year index; log and continue
+                logger.debug(f"Book not found in year index for year {year_key}: {book.title}")
+            if not self._year_index[year_key]:
+                del self._year_index[year_key]
 
     def save_books(self) -> None:
         """Save the current book collection to persistent storage.
@@ -585,7 +606,49 @@ class BookCollection:
             return self._author_index[key].copy()
         # Fallback to substring search across all books' authors
         return [b for b in self.books if key in b.author.lower()]
-    
+
+    def find_by_year_range(self, year_min: Optional[int] = None, year_max: Optional[int] = None) -> List[Book]:
+        """Find books whose publication year is within the inclusive range [year_min, year_max].
+
+        Uses an index by year for fast lookup. Both bounds are optional; None means unbounded.
+
+        Args:
+            year_min: Minimum year (inclusive) or None.
+            year_max: Maximum year (inclusive) or None.
+
+        Returns:
+            List[Book]: Books matching the year range.
+
+        Raises:
+            InvalidYearError: If provided years are not integers or out of allowed range.
+        """
+        # Validate inputs
+        if year_min is not None:
+            if not isinstance(year_min, int):
+                raise InvalidYearError(year_min, 1000, 2100)
+            if year_min < 1000 or year_min > 2100:
+                raise InvalidYearError(year_min, 1000, 2100)
+        if year_max is not None:
+            if not isinstance(year_max, int):
+                raise InvalidYearError(year_max, 1000, 2100)
+            if year_max < 1000 or year_max > 2100:
+                raise InvalidYearError(year_max, 1000, 2100)
+
+        if year_min is not None and year_max is not None and year_min > year_max:
+            # Empty range
+            return []
+
+        # Collect matching years from the index
+        results: List[Book] = []
+        for y, books_in_year in self._year_index.items():
+            if year_min is not None and y < year_min:
+                continue
+            if year_max is not None and y > year_max:
+                continue
+            results.extend(books_in_year)
+
+        return results
+
     def search(
         self,
         author: Optional[str] = None,

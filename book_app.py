@@ -151,6 +151,50 @@ class FindCommand(Command):
         return "Find books by author"
 
 
+class SearchYearCommand(Command):
+    """Search books by year range."""
+
+    def execute(self) -> None:
+        self.ui.print_section("Search Books by Year Range")
+
+        # Import constants locally to avoid changing module-level imports
+        from utils import CURRENT_YEAR, MIN_YEAR
+
+        min_input = input(f"Enter minimum year ({MIN_YEAR}-{CURRENT_YEAR}) or leave blank: ").strip()
+        max_input = input(f"Enter maximum year ({MIN_YEAR}-{CURRENT_YEAR}) or leave blank: ").strip()
+
+        if not min_input and not max_input:
+            self.ui.print_error("At least one of minimum or maximum year must be provided.")
+            return
+
+        try:
+            year_min = int(min_input) if min_input else None
+            year_max = int(max_input) if max_input else None
+        except ValueError:
+            self.ui.print_error("Years must be valid integers.")
+            return
+
+        if year_min is not None and (year_min < MIN_YEAR or year_min > CURRENT_YEAR):
+            self.ui.print_error(f"Minimum year must be between {MIN_YEAR} and {CURRENT_YEAR}.")
+            return
+        if year_max is not None and (year_max < MIN_YEAR or year_max > CURRENT_YEAR):
+            self.ui.print_error(f"Maximum year must be between {MIN_YEAR} and {CURRENT_YEAR}.")
+            return
+
+        if year_min is not None and year_max is not None and year_min > year_max:
+            self.ui.print_error("Minimum year cannot be greater than maximum year.")
+            return
+
+        books = self.collection.search(year_min=year_min, year_max=year_max)
+
+        if not books:
+            print("No books found in that year range.")
+            return
+
+        header = f"Books from {year_min if year_min is not None else 'start'} to {year_max if year_max is not None else 'now'}"
+        show_books(books, header=header)
+
+
 class MarkReadCommand(Command):
     """Mark a book as read."""
 
@@ -191,6 +235,7 @@ class BookApp:
             "add": AddCommand(self.collection),
             "remove": RemoveCommand(self.collection),
             "find": FindCommand(self.collection),
+            "search-year": SearchYearCommand(self.collection),
             "mark-read": MarkReadCommand(self.collection),
         }
 
