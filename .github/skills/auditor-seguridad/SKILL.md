@@ -1,6 +1,6 @@
 ---
 name: auditor-seguridad
-description: "Revisión de código enfocada en la seguridad que verifica las 10 principales vulnerabilidades de OWASP (Proyecto Abierto de Seguridad en Aplicaciones Web)"
+description: "Usar para revisiones de seguridad, escaneo de vulnerabilidades, comprobación de inyección SQL, XSS, problemas de autenticación, vulnerabilidades del Top 10 de OWASP y mejores prácticas de seguridad"
 ---
 # Auditoría de seguridad
 
