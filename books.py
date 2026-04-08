@@ -36,7 +36,10 @@ from exceptions import (
     DuplicateBookError,
     BookModificationError,
     ReviewNotFoundError,
-    SaveError
+    SaveError,
+    StorageError,
+    LoadError,
+    CorruptedDataError
 )
 import logging
 
@@ -197,11 +200,13 @@ class BookCollection:
         try:
             self.books = self.storage.load_books()
             self._rebuild_indexes()
-        except Exception as e:
-            logger.error(f"Error loading books: {e}")
+        except StorageError as e:
+            logger.error(f"Storage error loading books: {e}")
+            # Initialize empty collection on storage failures to allow app to continue
             self.books = []
             self._title_index = {}
             self._author_index = {}
+            self._year_index = {}
 
     def _rebuild_indexes(self) -> None:
         """Rebuild title and author indexes from the current book list.
@@ -274,6 +279,19 @@ class BookCollection:
             if not self._year_index[year_key]:
                 del self._year_index[year_key]
 
+    def _is_duplicate(self, title: str, author: str) -> bool:
+        """Return True if a book with same title+author exists (case-insensitive)."""
+        title_key = title.lower()
+        existing = self._title_index.get(title_key)
+        return existing is not None and existing.author.lower() == author.lower()
+
+    def _validate_year_bound(self, year: int) -> None:
+        """Validate a year bound used in searches. Raises InvalidYearError on bad input."""
+        if not isinstance(year, int):
+            raise InvalidYearError(year, 1000, 2100)
+        if year != 0 and (year < 1000 or year > 2100):
+            raise InvalidYearError(year, 1000, 2100)
+
     def save_books(self) -> None:
         """Save the current book collection to persistent storage.
         
@@ -288,59 +306,37 @@ class BookCollection:
         """
         try:
             self.storage.save_books(self.books)
-        except Exception as e:
+        except SaveError:
+            # Storage.save_books raised SaveError with details — re-raise after logging
+            logger.error("SaveError when saving books")
+            raise
+        except (IOError, OSError, ValueError, TypeError) as e:
+            # Wrap known lower-level errors to provide consistent API to callers.
             logger.error(f"Error saving books: {e}")
-            raise SaveError(self.storage.data_file, str(e))
+            raise SaveError(self.storage.data_file, str(e)) from e
+        except Exception as e:
+            # Intentionally catch any other Exception to provide a consistent API to callers.
+            # This prevents unexpected storage-related exceptions from leaking raw traceback
+            # to higher-level callers; they are wrapped in SaveError with context.
+            # We still avoid catching BaseException so system-exiting exceptions are not masked.
+            logger.error(f"Unexpected error saving books: {e}")
+            raise SaveError(self.storage.data_file, str(e)) from e
 
     def add_book(self, title: str, author: str, year: int) -> Book:
-        """Add a new book to the collection.
-        
-        The book is validated, added to indexes, and automatically saved.
-        Duplicate detection is case-insensitive and based on title + author.
-        
-        Args:
-            title (str): Book title. Must not be empty or whitespace-only.
-            author (str): Book author. Must not be empty or whitespace-only.
-            year (int): Publication year. Must be between 1000 and 2100.
-            
-        Returns:
-            Book: The newly created and added book.
-        
-        Raises:
-            EmptyFieldError: If title or author is empty or whitespace-only.
-            InvalidYearError: If year is not in valid range (1000-2100).
-            DuplicateBookError: If a book with the same title and author
-                already exists (case-insensitive comparison).
-            SaveError: If saving to storage fails.
-        
-        Examples:
-            >>> collection = BookCollection()
-            >>> book = collection.add_book("1984", "George Orwell", 1949)
-            >>> book.title
-            '1984'
-            >>> book.read
-            False
-            
-            >>> # Duplicate detection (case-insensitive)
-            >>> collection.add_book("1984", "George Orwell", 1949)  # doctest: +SKIP
-            DuplicateBookError: Book '1984' by George Orwell already exists in collection
-            
-            >>> # Invalid year
-            >>> collection.add_book("Ancient Book", "Unknown", 500)  # doctest: +SKIP
-            InvalidYearError: Invalid year: 500: Year must be between 1000 and 2100
+        """Add a new book to the collection (validates inputs and handles duplicates).
         """
-        # Validate title
         if not title or not title.strip():
             raise EmptyFieldError("Title")
-            
-        # Check for duplicates
-        title_key = title.lower()
-        if title_key in self._title_index:
-            existing = self._title_index[title_key]
-            if existing.author.lower() == author.lower():
-                logger.warning(f"Book '{title}' by {author} already exists in collection")
-                raise DuplicateBookError(title, author)
-        
+
+        # Validate author early to avoid AttributeError in duplicate check
+        if not author or not isinstance(author, str) or not author.strip():
+            raise EmptyFieldError("Author")
+
+        if self._is_duplicate(title, author):
+            logger.warning(f"Book '{title}' by {author} already exists in collection")
+            raise DuplicateBookError(title, author)
+
+        # Book constructor validates year and other fields
         book = Book(title=title, author=author, year=year)
         self.books.append(book)
         self._add_to_indexes(book)
@@ -503,23 +499,11 @@ class BookCollection:
     def find_book_by_title(self, title: str) -> Optional[Book]:
         """Find a book by its title using O(1) index lookup.
         
-        Search is case-insensitive.
-        
-        Args:
-            title (str): Title to search for (case-insensitive).
-        
-        Returns:
-            Optional[Book]: The book if found, None otherwise.
-        
-        Examples:
-            >>> collection = BookCollection()
-            >>> collection.add_book("The Hobbit", "J.R.R. Tolkien", 1937)
-            >>> book = collection.find_book_by_title("the hobbit")  # Case-insensitive
-            >>> book.author
-            'J.R.R. Tolkien'
-            >>> collection.find_book_by_title("Missing Book") is None
-            True
+        Search is case-insensitive. Returns None for falsy titles to avoid
+        AttributeError on callers that pass None.
         """
+        if not title:
+            return None
         return self._title_index.get(title.lower())
 
     def mark_as_read(self, title: str) -> None:
@@ -682,66 +666,32 @@ class BookCollection:
         year_max: Optional[int] = None,
         read: Optional[bool] = None
     ) -> List[Book]:
-        """Search books by multiple criteria.
-        
-        All provided criteria must match (AND operation). Criteria with None
-        values are ignored. Search is case-insensitive for author names.
-        
-        Args:
-            author (Optional[str]): Filter by author name (case-insensitive).
-            year_min (Optional[int]): Minimum publication year (inclusive).
-            year_max (Optional[int]): Maximum publication year (inclusive).
-            read (Optional[bool]): Filter by read status (True/False).
-        
-        Returns:
-            List[Book]: List of books matching all specified criteria.
-                Returns all books if no criteria specified.
-        
-        Examples:
-            >>> collection = BookCollection()
-            >>> collection.add_book("Book 1", "Author A", 2010)
-            >>> collection.add_book("Book 2", "Author A", 2020)
-            >>> collection.add_book("Book 3", "Author B", 2015)
-            >>> collection.mark_as_read("Book 1")
-            
-            >>> # Search by author
-            >>> books = collection.search(author="Author A")
-            >>> len(books)
-            2
-            
-            >>> # Search by year range
-            >>> books = collection.search(year_min=2015, year_max=2020)
-            >>> len(books)
-            2
-            
-            >>> # Search by read status
-            >>> books = collection.search(read=True)
-            >>> len(books)
-            1
-            
-            >>> # Combine multiple criteria
-            >>> books = collection.search(author="Author A", year_min=2015, read=False)
-            >>> len(books)
-            1
-            >>> books[0].title
-            'Book 2'
+        """Search books by multiple criteria with input validation.
         """
+        # Validate year bounds early to fail fast on bad input
+        if year_min is not None:
+            self._validate_year_bound(year_min)
+        if year_max is not None:
+            self._validate_year_bound(year_max)
+        if year_min is not None and year_max is not None and year_min > year_max:
+            return []
+
         results = self.books
-        
+
         if author is not None:
             key = author.lower().strip()
             if not key:
                 results = []
             else:
                 results = [b for b in results if key in b.author.lower()]
-        
+
         if year_min is not None:
             results = [b for b in results if b.year >= year_min]
-        
+
         if year_max is not None:
             results = [b for b in results if b.year <= year_max]
-        
+
         if read is not None:
             results = [b for b in results if b.read == read]
-        
+
         return results
