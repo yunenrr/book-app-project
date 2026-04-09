@@ -1,6 +1,6 @@
 ---
 name: revisor-pr
-description: Lista de verificación de revisión de PR según el estándar del equipo
+description: "Lista de verificación de revisión de PR según el estándar del equipo"
 ---
 
 # Revisor PR
