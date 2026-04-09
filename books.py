@@ -38,8 +38,7 @@ from exceptions import (
     ReviewNotFoundError,
     SaveError,
     StorageError,
-    LoadError,
-    CorruptedDataError
+    LoadError
 )
 import logging
 
@@ -145,8 +144,17 @@ class Book:
         elif self.year < 1000 or self.year > 2100:
             raise InvalidYearError(self.year, 1000, 2100)
         # Convert reviews from dicts if loaded from JSON
-        if self.reviews and isinstance(self.reviews[0], dict):
-            self.reviews = [Review(**r) for r in self.reviews]
+        if self.reviews:
+            converted_reviews = []
+            for r in self.reviews:
+                if isinstance(r, dict):
+                    converted_reviews.append(Review(**r))
+                elif isinstance(r, Review):
+                    converted_reviews.append(r)
+                else:
+                    # ignore invalid entries silently and log for debugging
+                    logger.debug(f"Ignoring invalid review entry for book '{self.title}': {r}")
+            self.reviews = converted_reviews
 
 
 class BookCollection:
@@ -231,8 +239,8 @@ class BookCollection:
             - Author index maps lowercase author to list of books (one-to-many).
             - Year index maps integer year to list of books (one-to-many) for fast range queries.
         """
-        title_key = book.title.lower()
-        author_key = book.author.lower()
+        title_key = book.title.strip().lower()
+        author_key = book.author.strip().lower()
         year_key = book.year
         
         # Title index (one-to-one)
@@ -258,15 +266,20 @@ class BookCollection:
             If the author or year has no more books after removal, the key
             is deleted from the respective index.
         """
-        title_key = book.title.lower()
-        author_key = book.author.lower()
+        title_key = book.title.strip().lower()
+        author_key = book.author.strip().lower()
         year_key = book.year
         
         if title_key in self._title_index:
-            del self._title_index[title_key]
+            # only remove the title entry if it refers to this exact book
+            if self._title_index.get(title_key) is book:
+                del self._title_index[title_key]
         
         if author_key in self._author_index:
-            self._author_index[author_key].remove(book)
+            try:
+                self._author_index[author_key].remove(book)
+            except ValueError:
+                logger.debug(f"Book not found in author index for author {author_key}: {book.title}")
             if not self._author_index[author_key]:
                 del self._author_index[author_key]
         
@@ -281,9 +294,10 @@ class BookCollection:
 
     def _is_duplicate(self, title: str, author: str) -> bool:
         """Return True if a book with same title+author exists (case-insensitive)."""
-        title_key = title.lower()
+        title_key = title.strip().lower()
+        author_key = author.strip().lower()
         existing = self._title_index.get(title_key)
-        return existing is not None and existing.author.lower() == author.lower()
+        return existing is not None and existing.author.strip().lower() == author_key
 
     def _validate_year_bound(self, year: int) -> None:
         """Validate a year bound used in searches. Raises InvalidYearError on bad input."""
@@ -504,7 +518,8 @@ class BookCollection:
         """
         if not title:
             return None
-        return self._title_index.get(title.lower())
+        key = title.strip().lower()
+        return self._title_index.get(key)
 
     def mark_as_read(self, title: str) -> None:
         """Mark a book as read.
@@ -634,15 +649,9 @@ class BookCollection:
         """
         # Validate inputs
         if year_min is not None:
-            if not isinstance(year_min, int):
-                raise InvalidYearError(year_min, 1000, 2100)
-            if year_min < 1000 or year_min > 2100:
-                raise InvalidYearError(year_min, 1000, 2100)
+            self._validate_year_bound(year_min)
         if year_max is not None:
-            if not isinstance(year_max, int):
-                raise InvalidYearError(year_max, 1000, 2100)
-            if year_max < 1000 or year_max > 2100:
-                raise InvalidYearError(year_max, 1000, 2100)
+            self._validate_year_bound(year_max)
 
         if year_min is not None and year_max is not None and year_min > year_max:
             # Empty range
