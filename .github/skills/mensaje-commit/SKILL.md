@@ -37,6 +37,7 @@ Genera mensajes de commit siguiendo la especificación Conventional Commits.
 3. No usar punto al final de la línea de asunto
 4. Separar la línea de asunto del cuerpo con una línea en blanco
 5. El cuerpo explica **qué** y **por qué**, no cómo
+6. El mensaje de commit debe ser en español
 
 ## Ejemplos
 
